@@ -19,30 +19,41 @@ function [fc_opt, T_opt, om_opt, x_cam, removed, residual]=single_cam_calib_fc(f
 % T=T(:,use);
 % om=om(:,use);
 
+use_grid=zeros(size(x_cam));
+
 k=1;
+
+om_use=[];
+T_use=[];
+
 for i=1:length(x_cam)
     
     xx=x_cam{i};
-%     xx=xx(:,1:10);
     
-    if ~isempty(xx)
+    if ~isempty(xx) && any(~isnan(xx(1,:)))
+
         [Ay, Ax]=find(isnan(xx));
         xx(:,Ax)=[];
 
-        
         X=XX_cam;
-%         X=X(:,1:10);
         X(:,Ax)=[];
         
         x_cell{k}=xx;
         X_cell{k}=X;
         
-        grid_l(i)=size(X,2);
+        grid_l(k)=size(X,2);
+
+        om_use(:,k)=om(:,i);
+        T_use(:,k)=T(:,i);
+
+        use_grid(i)=1;
         
         k=k+1;
     end
     
 end
+
+use_grid_ind=find(use_grid);
 
 %BUNDLE ADJUSTMENT ROUTINE
 %Specifies structure of the Jacobian matrix in the sparse matrix JStr
@@ -59,7 +70,7 @@ for runs=1:2
     
         clear j*
      
-        chi0=[[fc(1);0;0] om T];
+        chi0=[[fc(1);0;0] om_use T_use];
         jcol_cam=repmat([1 1],size(xx,2),1);
     
         jcol_cam=jcol_cam(:);
@@ -104,35 +115,42 @@ for runs=1:2
         % [chi2,resnorm2,residual,exitflag,output,lambda,jacob]=lsqnonlin(@(chi) function_single_cam_no_cc(xx,chi,X_cell,cc,kc),chi0,[],[],options);
         % return
         % disp(resnorm)
-        
+                
         if runs==1
-            for i=1:length(x_cell)
+
+            x_cell_init_length=length(x_cell);
+
+             for i=length(x_cell):-1:1
         
                 if ~isempty(x_cell{i})
             
                     xx_temp=x_cell{i};
             
-                    F=function_single_cam_fc(xx_temp,chi(:,[1 i+1 length(x_cell)+i+1]),X_cell(i),cc,kc);
+                    F=function_single_cam_fc(xx_temp,chi(:,[1 i+1 x_cell_init_length+i+1]),X_cell(i),cc,kc);
         
                     RR=hypot(F(1,:),F(2,:));
                     
-                    MSE=mean(RR);
-        
+                    MSE=mean(RR)
+                 
                     if MSE>5
         
                         changed=1;
-        
-                        x_cell{i}=[];
-                        X_cell{i}=double.empty(3,0);
+                               
+                        x_cell(i)=[];
+                        X_cell(i)=[];
 
-                        om(:,i)=NaN(3,1);
-                        T(:,i)=NaN(3,1);
+                        om_use(:,i)=[];
+                        T_use(:,i)=[];
 
-                        grid_l(i)=0;
+                        grid_l(i)=[];
 
-                        x_cam{i}=NaN(size(x_cam{i}));
+                        use_grid_ind(i);
 
-                        removed(i)=1;
+                        x_cam{use_grid_ind(i)}=NaN(size(x_cam{i}));
+                        removed(use_grid_ind(i))=1;
+                        use_grid(use_grid_ind(i))=[];
+
+                        use_grid_ind(i)=[];
         
                     end
         
@@ -147,8 +165,8 @@ end
 
 fc_opt=chi([1 1],1);
 
-om_opt=chi(:,2:size(X_cell,2)+1);
-T_opt=chi(:,size(X_cell,2)+2:end);
+om_opt=NaN(3,length(x_cam));
+T_opt=NaN(3,length(x_cam));
 
-RR=hypot(residual(1,:),residual(2,:));
-MSE=mean(RR);
+om_opt(:,use_grid_ind)=chi(:,2:size(X_cell,2)+1);
+T_opt(:,use_grid_ind)=chi(:,size(X_cell,2)+2:end);

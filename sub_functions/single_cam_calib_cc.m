@@ -17,30 +17,41 @@ function [fc_opt, cc_opt, T_opt, om_opt, residual]=single_cam_calib_cc(fc,cc,kc,
 % T=T(:,use);
 % om=om(:,use);
 
+use_grid=zeros(size(x_cam));
+
 k=1;
+
+om_use=[];
+T_use=[];
+
 for i=1:length(x_cam)
     
     xx=x_cam{i};
-%     xx=xx(:,1:10);
     
-    if ~isempty(xx)
+    if ~isempty(xx) && any(~isnan(xx(1,:)))
+
         [Ay, Ax]=find(isnan(xx));
         xx(:,Ax)=[];
 
-        
         X=XX_cam;
-%         X=X(:,1:10);
         X(:,Ax)=[];
         
         x_cell{k}=xx;
         X_cell{k}=X;
         
-        grid_l(i)=size(X,2);
+        grid_l(k)=size(X,2);
+
+        om_use(:,k)=om(:,i);
+        T_use(:,k)=T(:,i);
+
+        use_grid(i)=1;
         
         k=k+1;
     end
     
 end
+
+use_grid_ind=find(use_grid);
 
 xx=cell2mat(x_cell);
 grid_t=numel(xx);
@@ -49,7 +60,7 @@ grid_t=numel(xx);
 %Specifies structure of the Jacobian matrix in the sparse matrix JStr
 
 clear j*
-chi0=[[fc(1);cc(1);cc(2)] om T];
+chi0=[[fc(1);cc(1);cc(2)] om_use T_use];
 jcol_cam=repmat([1 2 1 3],size(xx,2),1);
 
 jcol_cam=jcol_cam(:);
@@ -99,8 +110,8 @@ options=optimset(options,'JacobPattern',JStr,'Display','off','MaxIter',150,'TolF
 fc_opt=chi([1 1],1);
 cc_opt=chi([2 3],1);
 
-om_opt=chi(:,2:size(X_cell,2)+1);
-T_opt=chi(:,size(X_cell,2)+2:end);
+om_opt=NaN(3,length(x_cam));
+T_opt=NaN(3,length(x_cam));
 
-%     disp(resnorm)
-%     return
+om_opt(:,use_grid_ind)=chi(:,2:size(X_cell,2)+1);
+T_opt(:,use_grid_ind)=chi(:,size(X_cell,2)+2:end);
